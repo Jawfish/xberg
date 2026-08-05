@@ -503,16 +503,10 @@ fn collect_annotation_uris(
         if let AnnotationKind::Link { url, .. } = &ann.kind
             && !url.is_empty()
         {
-            let label = if ann.start < ann.end && (ann.end as usize) <= text.len() {
-                let slice = &text[ann.start as usize..ann.end as usize];
-                if slice.is_empty() {
-                    None
-                } else {
-                    Some(slice.to_string())
-                }
-            } else {
-                None
-            };
+            let label = text
+                .get(ann.start as usize..ann.end as usize)
+                .filter(|slice| !slice.is_empty())
+                .map(str::to_string);
             builder.push_uri(ExtractedUri {
                 url: url.clone(),
                 label,
@@ -690,6 +684,50 @@ mod tests {
     fn test_epub_extractor_default() {
         let extractor = EpubExtractor;
         assert_eq!(extractor.name(), "epub-extractor");
+    }
+
+    #[test]
+    fn test_collect_annotation_uris_skips_non_char_boundary_range() {
+        use crate::types::document_structure::{AnnotationKind, TextAnnotation};
+
+        let text = "see\u{200b}the docs";
+        let annotations = vec![TextAnnotation {
+            start: 4,
+            end: 7,
+            kind: AnnotationKind::Link {
+                url: "https://example.com".to_string(),
+                title: None,
+            },
+        }];
+        let mut builder = InternalDocumentBuilder::new("epub");
+
+        collect_annotation_uris(&annotations, text, &mut builder);
+
+        let doc = builder.build();
+        assert_eq!(doc.uris.len(), 1);
+        assert_eq!(doc.uris[0].url, "https://example.com");
+        assert!(doc.uris[0].label.is_none());
+    }
+
+    #[test]
+    fn test_collect_annotation_uris_keeps_valid_label() {
+        use crate::types::document_structure::{AnnotationKind, TextAnnotation};
+
+        let text = "see the docs";
+        let annotations = vec![TextAnnotation {
+            start: 4,
+            end: 12,
+            kind: AnnotationKind::Link {
+                url: "https://example.com".to_string(),
+                title: None,
+            },
+        }];
+        let mut builder = InternalDocumentBuilder::new("epub");
+
+        collect_annotation_uris(&annotations, text, &mut builder);
+
+        let doc = builder.build();
+        assert_eq!(doc.uris[0].label.as_deref(), Some("the docs"));
     }
 
     #[tokio::test]
