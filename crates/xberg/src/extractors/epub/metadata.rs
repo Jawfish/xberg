@@ -116,7 +116,7 @@ pub(super) fn parse_opf(
     opf_dir: &str,
     budget: &mut SecurityBudget,
 ) -> Result<(EpubPackageDocument, Vec<ProcessingWarning>)> {
-    match roxmltree::Document::parse(xml) {
+    match super::parsing::parse_packaging_xml(xml) {
         Ok(doc) => {
             let root = doc.root();
 
@@ -132,7 +132,7 @@ pub(super) fn parse_opf(
             for node in root.descendants() {
                 budget.step()?;
                 if node.is_element() {
-                    budget.enter()?;
+                    budget.check_depth(node.ancestors().count().saturating_sub(1))?;
                     for attr in node.attributes() {
                         budget.check_attr(attr.name(), attr.value())?;
                     }

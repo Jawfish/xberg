@@ -14,9 +14,24 @@ pub(super) struct CanonicalHref {
     pub(super) fragment: Option<String>,
 }
 
+/// Parse EPUB packaging XML (container.xml, OPF).
+///
+/// DTDs are allowed because real EPUBs declare them in packaging files and
+/// rejecting the document loses the whole book. `roxmltree` resolves no
+/// external entities and keeps its billion-laughs checks either way.
+pub(super) fn parse_packaging_xml(xml: &str) -> std::result::Result<roxmltree::Document<'_>, roxmltree::Error> {
+    roxmltree::Document::parse_with_options(
+        xml,
+        roxmltree::ParsingOptions {
+            allow_dtd: true,
+            ..Default::default()
+        },
+    )
+}
+
 /// Parse container.xml to find the OPF file path
 pub(super) fn parse_container_xml(xml: &str) -> Result<String> {
-    match roxmltree::Document::parse(xml) {
+    match parse_packaging_xml(xml) {
         Ok(doc) => {
             for node in doc.descendants() {
                 if node.tag_name().name() == "rootfile"

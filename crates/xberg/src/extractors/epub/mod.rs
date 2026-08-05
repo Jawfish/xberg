@@ -832,4 +832,43 @@ mod tests {
         assert!(!additional.contains_key("type"));
         assert!(!additional.contains_key("cover_image"));
     }
+
+    #[test]
+    fn test_parse_opf_accepts_manifest_larger_than_the_depth_limit() {
+        let items: String = (0..1500)
+            .map(|i| format!("    <item id=\"c{i}\" href=\"c{i}.xhtml\" media-type=\"application/xhtml+xml\"/>\n"))
+            .collect();
+        let opf = format!(
+            r#"<?xml version="1.0"?>
+<package xmlns="http://www.idpf.org/2007/opf" version="3.0">
+  <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
+    <dc:title>Big Book</dc:title>
+  </metadata>
+  <manifest>
+{items}  </manifest>
+  <spine>
+    <itemref idref="c0"/>
+  </spine>
+</package>"#
+        );
+
+        let mut budget = crate::extractors::security::SecurityBudget::with_defaults();
+        let (package, _warnings) = metadata::parse_opf(&opf, "", &mut budget).expect("large manifest should parse");
+        assert_eq!(package.metadata.title, Some("Big Book".to_string()));
+        assert_eq!(package.manifest.len(), 1500);
+    }
+
+    #[test]
+    fn test_parse_container_xml_accepts_a_doctype() {
+        let container = r#"<?xml version="1.0"?>
+<!DOCTYPE container SYSTEM "container.dtd">
+<container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
+  <rootfiles>
+    <rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/>
+  </rootfiles>
+</container>"#;
+
+        let opf_path = parsing::parse_container_xml(container).expect("doctype should be allowed");
+        assert_eq!(opf_path, "OEBPS/content.opf");
+    }
 }

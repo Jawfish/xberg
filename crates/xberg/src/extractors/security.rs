@@ -386,6 +386,21 @@ impl DepthValidator {
             self.current_depth -= 1;
         }
     }
+
+    /// Validate an absolute nesting depth without mutating the running counter.
+    ///
+    /// Use when walking an already-parsed tree, where each node's depth is
+    /// known directly and there is no matching close event to `pop`.
+    pub(crate) fn check(&self, depth: usize) -> Result<(), SecurityError> {
+        if depth > self.max_depth {
+            Err(SecurityError::NestingTooDeep {
+                depth,
+                max: self.max_depth,
+            })
+        } else {
+            Ok(())
+        }
+    }
 }
 
 /// Helper struct for capping individual entity / attribute string length.
@@ -540,6 +555,14 @@ impl SecurityBudget {
         self.depth.pop();
     }
 
+    /// Validate an absolute nesting depth for a node in an already-parsed tree.
+    ///
+    /// Tree walks that visit nodes through a flat iterator have no close event
+    /// to pair with `enter`, so they report each node's own depth here instead.
+    pub(crate) fn check_depth(&self, depth: usize) -> Result<(), SecurityError> {
+        self.depth.check(depth)
+    }
+
     /// Account for `len` bytes of emitted text. Returns `Err(ContentTooLarge)`
     /// once total output exceeds `max_content_size`.
     pub(crate) fn account_text(&mut self, len: usize) -> Result<(), SecurityError> {
@@ -647,6 +670,20 @@ mod tests {
         v.pop();
         v.pop();
         assert_eq!(v.current_depth, 0, "underflow is impossible");
+    }
+
+    #[test]
+    fn test_depth_validator_check_is_independent_of_the_running_counter() {
+        let mut v = DepthValidator::new(3);
+        assert!(v.push().is_ok());
+
+        assert!(v.check(0).is_ok());
+        assert!(v.check(3).is_ok());
+        assert!(matches!(
+            v.check(4),
+            Err(SecurityError::NestingTooDeep { depth: 4, max: 3 })
+        ));
+        assert_eq!(v.current_depth, 1, "check must not advance the counter");
     }
 
     #[test]
